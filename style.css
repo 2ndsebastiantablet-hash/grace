@@ -44,8 +44,7 @@ button {
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: 1fr;
   padding: 18px;
 }
 
@@ -64,6 +63,10 @@ button {
   display: grid;
   gap: 16px;
   align-content: start;
+}
+
+.hud-panel--hidden {
+  display: none;
 }
 
 .brand-card,
@@ -244,10 +247,16 @@ h2 {
     0 0 0 6px rgba(255, 255, 255, 0.05),
     0 0 24px rgba(142, 247, 200, 0.22);
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
 }
 
 .viewport-shell.is-dashing .crosshair {
   opacity: 0.16;
+}
+
+body.is-locked .crosshair {
+  opacity: 1;
 }
 
 .crosshair::before,
@@ -417,10 +426,6 @@ body.is-locked .prompt {
 }
 
 @media (max-width: 980px) {
-  .app-shell {
-    grid-template-columns: 1fr;
-  }
-
   .viewport-shell {
     min-height: 64vh;
   }

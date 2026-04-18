@@ -8,77 +8,6 @@
 </head>
 <body>
   <main class="app-shell">
-    <aside class="hud-panel">
-      <div class="brand-card">
-        <p class="eyebrow">First-Person Parkour Shooter Prototype</p>
-        <h1>Grace</h1>
-        <p class="lede">
-          Hit Play to generate a fresh obstacle course, drop straight into the run, and test the
-          fast movement kit with sprinting, double jumps, grabs, slides, wall tech, rails, pads,
-          fans, and an airborne invis dash.
-        </p>
-      </div>
-
-      <div class="stats-card">
-        <div class="stat-row">
-          <span>Seed</span>
-          <strong id="seed-readout">--</strong>
-        </div>
-        <div class="stat-row">
-          <span>Section</span>
-          <strong id="section-readout">Main Menu</strong>
-        </div>
-        <div class="stat-row">
-          <span>State</span>
-          <strong id="state-readout">Waiting</strong>
-        </div>
-        <div class="stat-row">
-          <span>Speed</span>
-          <strong id="speed-readout">0.0 m/s</strong>
-        </div>
-        <div class="stat-row">
-          <span>Stamina</span>
-          <strong id="stamina-readout">100%</strong>
-        </div>
-        <div class="stamina-track">
-          <div id="stamina-fill" class="stamina-fill"></div>
-        </div>
-      </div>
-
-      <div class="objective-card">
-        <p class="eyebrow">Current Objective</p>
-        <strong id="objective-title">Press Play</strong>
-        <p id="objective-copy">Generate a fresh map and jump into the first checkpoint.</p>
-      </div>
-
-      <div class="controls-card">
-        <p class="eyebrow">Controls</p>
-        <ul>
-          <li><span>Move</span><strong>W A S D</strong></li>
-          <li><span>Jump / Double Jump</span><strong>Space</strong></li>
-          <li><span>Slide / Wall Slide</span><strong>Shift</strong></li>
-          <li><span>Invisible Dash</span><strong>Jump, then Shift</strong></li>
-          <li><span>Look</span><strong>Mouse</strong></li>
-          <li><span>Grab / Hold</span><strong>Left Mouse</strong></li>
-          <li><span>Regenerate Course</span><strong>R</strong></li>
-          <li><span>Respawn</span><strong>T</strong></li>
-        </ul>
-      </div>
-
-      <div class="hint-card">
-        <p class="eyebrow">Technique Notes</p>
-        <p id="hint-copy">
-          Double tap any movement key to sprint. In the air, Shift triggers a fast invisible dash
-          in the direction you are looking.
-        </p>
-      </div>
-
-      <div class="button-row">
-        <button id="lock-button" type="button">Play</button>
-        <button id="regen-button" type="button">Regenerate</button>
-      </div>
-    </aside>
-
     <section class="viewport-shell">
       <div id="viewport" class="viewport"></div>
       <div class="crosshair" aria-hidden="true"></div>
@@ -108,6 +37,33 @@
       <div id="prompt" class="prompt">Press Play to generate a run and enter the map.</div>
     </section>
   </main>
+
+  <aside class="hud-panel hud-panel--hidden" aria-hidden="true">
+    <div class="stats-card">
+      <div class="stat-row"><span>Seed</span><strong id="seed-readout">--</strong></div>
+      <div class="stat-row"><span>Section</span><strong id="section-readout">Main Menu</strong></div>
+      <div class="stat-row"><span>State</span><strong id="state-readout">Waiting</strong></div>
+      <div class="stat-row"><span>Speed</span><strong id="speed-readout">0.0 m/s</strong></div>
+      <div class="stat-row"><span>Stamina</span><strong id="stamina-readout">100%</strong></div>
+      <div class="stamina-track">
+        <div id="stamina-fill" class="stamina-fill"></div>
+      </div>
+    </div>
+    <div class="objective-card">
+      <strong id="objective-title">Press Play</strong>
+      <p id="objective-copy">Generate a fresh map and jump into the first checkpoint.</p>
+    </div>
+    <div class="hint-card">
+      <p id="hint-copy">
+        Double tap any movement key to sprint. In the air, Shift triggers a fast invisible dash
+        in the direction you are looking.
+      </p>
+    </div>
+    <div class="button-row">
+      <button id="lock-button" type="button">Play</button>
+      <button id="regen-button" type="button">Regenerate</button>
+    </div>
+  </aside>
 
   <script type="module" src="./game.js"></script>
   <script src="./menu.js"></script>
