@@ -286,6 +286,86 @@ h2 {
   padding: 28px;
 }
 
+.generation-meter {
+  --progress: 0;
+  width: 164px;
+  height: 164px;
+  margin: 22px auto 10px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transform: scale(0.92);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.generation-meter.is-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+body.is-generating .overlay {
+  opacity: 1;
+  pointer-events: none;
+}
+
+body.is-generating .generation-meter {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.generation-ring {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  overflow: visible;
+}
+
+.generation-ring-track,
+.generation-ring-fill {
+  fill: none;
+  stroke-width: 10;
+}
+
+.generation-ring-track {
+  stroke: rgba(255, 255, 255, 0.12);
+}
+
+.generation-ring-fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-dasharray: 289.03;
+  stroke-dashoffset: calc(289.03 * (1 - var(--progress)));
+  filter: drop-shadow(0 0 12px rgba(142, 247, 200, 0.5));
+  transition: stroke-dashoffset 80ms linear;
+}
+
+.generation-core {
+  position: absolute;
+  inset: 24px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(40, 201, 255, 0.18), rgba(5, 11, 17, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 28px rgba(0, 0, 0, 0.35);
+  text-align: center;
+}
+
+.generation-core strong {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.generation-core span {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
 .overlay-actions {
   margin-top: 22px;
 }
@@ -324,6 +404,11 @@ h2 {
 
 body.is-locked .overlay {
   opacity: 0;
+  pointer-events: none;
+}
+
+body.is-locked.is-generating .overlay {
+  opacity: 1;
   pointer-events: none;
 }
 

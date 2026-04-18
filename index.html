@@ -86,6 +86,16 @@
         <div class="overlay-card">
           <p class="eyebrow">Main Menu</p>
           <h2 id="menu-title">Grace</h2>
+          <div id="generation-meter" class="generation-meter" aria-hidden="true">
+            <svg class="generation-ring" viewBox="0 0 120 120" role="img" aria-label="Map generation progress">
+              <circle class="generation-ring-track" cx="60" cy="60" r="46"></circle>
+              <circle id="generation-ring-fill" class="generation-ring-fill" cx="60" cy="60" r="46"></circle>
+            </svg>
+            <div class="generation-core">
+              <strong id="generation-percent">0%</strong>
+              <span>Generating</span>
+            </div>
+          </div>
           <p id="overlay-copy">
             Press Play to generate the map and drop directly into the course. Once you are in, mouse
             look turns on and the run starts immediately.
