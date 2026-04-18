@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Velocity Raze Prototype</title>
+  <title>Grace</title>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -11,10 +11,11 @@
     <aside class="hud-panel">
       <div class="brand-card">
         <p class="eyebrow">First-Person Parkour Shooter Prototype</p>
-        <h1>Velocity Raze</h1>
+        <h1>Grace</h1>
         <p class="lede">
-          Click into the arena to lock the mouse, then run the generated obstacle course with
-          sprinting, double jumps, grabs, slides, wall tech, rails, pads, and fans.
+          Hit Play to generate a fresh obstacle course, drop straight into the run, and test the
+          fast movement kit with sprinting, double jumps, grabs, slides, wall tech, rails, pads,
+          fans, and an airborne invis dash.
         </p>
       </div>
 
@@ -25,11 +26,11 @@
         </div>
         <div class="stat-row">
           <span>Section</span>
-          <strong id="section-readout">Booting</strong>
+          <strong id="section-readout">Main Menu</strong>
         </div>
         <div class="stat-row">
           <span>State</span>
-          <strong id="state-readout">Idle</strong>
+          <strong id="state-readout">Waiting</strong>
         </div>
         <div class="stat-row">
           <span>Speed</span>
@@ -46,8 +47,8 @@
 
       <div class="objective-card">
         <p class="eyebrow">Current Objective</p>
-        <strong id="objective-title">Preparing course...</strong>
-        <p id="objective-copy">Loading the movement sandbox.</p>
+        <strong id="objective-title">Press Play</strong>
+        <p id="objective-copy">Generate a fresh map and jump into the first checkpoint.</p>
       </div>
 
       <div class="controls-card">
@@ -73,7 +74,7 @@
       </div>
 
       <div class="button-row">
-        <button id="lock-button" type="button">Enter Arena</button>
+        <button id="lock-button" type="button">Play</button>
         <button id="regen-button" type="button">Regenerate</button>
       </div>
     </aside>
@@ -83,21 +84,22 @@
       <div class="crosshair" aria-hidden="true"></div>
       <div id="overlay" class="overlay">
         <div class="overlay-card">
-          <p class="eyebrow">Movement Build</p>
-          <h2>Parkour systems online</h2>
-          <p>
-            Click <strong>Enter Arena</strong> or click in the viewport. Mouse lock turns on first-person look.
-          </p>
+          <p class="eyebrow">Main Menu</p>
+          <h2 id="menu-title">Grace</h2>
           <p id="overlay-copy">
-            Sprint by double tapping a movement key. While airborne, tap Shift to invis dash in the
-            direction you are looking.
+            Press Play to generate the map and drop directly into the course. Once you are in, mouse
+            look turns on and the run starts immediately.
           </p>
+          <div class="overlay-actions">
+            <button id="overlay-play-button" type="button">Play</button>
+          </div>
         </div>
       </div>
-      <div id="prompt" class="prompt">Look at a hold or bar and hold left mouse to grab.</div>
+      <div id="prompt" class="prompt">Press Play to generate a run and enter the map.</div>
     </section>
   </main>
 
   <script type="module" src="./game.js"></script>
+  <script src="./menu.js"></script>
 </body>
 </html>

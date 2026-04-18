@@ -1,4 +1,4 @@
-# Velocity Raze Prototype
+# Grace
 
 Static web prototype for a first-person parkour shooter.
 
@@ -15,3 +15,5 @@ Static web prototype for a first-person parkour shooter.
 
 This is a plain static site. Upload `index.html`, `game.js`, `style.css`, and `.nojekyll` to the
 repository root and enable static hosting such as GitHub Pages, Netlify, or any static file host.
+
+Press `Play` from the main menu to generate a fresh course and spawn directly into the map.

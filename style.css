@@ -187,6 +187,14 @@ h2 {
   outline: none;
 }
 
+#regen-button:disabled,
+.overlay-actions button:disabled {
+  cursor: progress;
+  opacity: 0.55;
+  transform: none;
+  box-shadow: none;
+}
+
 .viewport-shell {
   position: relative;
   min-height: calc(100vh - 36px);
@@ -262,18 +270,43 @@ h2 {
   inset: 0;
   display: grid;
   place-items: center;
-  pointer-events: none;
+  pointer-events: auto;
   transition: opacity 180ms ease;
+  background: linear-gradient(180deg, rgba(3, 8, 13, 0.3) 0%, rgba(3, 8, 13, 0.6) 100%);
 }
 
 .overlay.is-hidden {
   opacity: 0;
+  pointer-events: none;
 }
 
 .overlay-card {
   width: min(460px, calc(100% - 32px));
   border-radius: var(--radius-xl);
   padding: 28px;
+}
+
+.overlay-actions {
+  margin-top: 22px;
+}
+
+.overlay-actions button {
+  min-width: 180px;
+  border: 0;
+  border-radius: 999px;
+  padding: 15px 22px;
+  color: #03212d;
+  font-weight: 800;
+  font-size: 1rem;
+  cursor: pointer;
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-strong) 100%);
+  box-shadow: 0 16px 32px rgba(40, 201, 255, 0.22);
+}
+
+.overlay-actions button:hover,
+.overlay-actions button:focus-visible {
+  transform: translateY(-1px);
+  outline: none;
 }
 
 .prompt {
@@ -291,6 +324,7 @@ h2 {
 
 body.is-locked .overlay {
   opacity: 0;
+  pointer-events: none;
 }
 
 body.is-locked .prompt {
