@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Velocity Raze Prototype</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="hud-panel">
+      <div class="brand-card">
+        <p class="eyebrow">First-Person Parkour Shooter Prototype</p>
+        <h1>Velocity Raze</h1>
+        <p class="lede">
+          Click into the arena to lock the mouse, then run the generated obstacle course with
+          sprinting, double jumps, grabs, slides, wall tech, rails, pads, and fans.
+        </p>
+      </div>
+
+      <div class="stats-card">
+        <div class="stat-row">
+          <span>Seed</span>
+          <strong id="seed-readout">--</strong>
+        </div>
+        <div class="stat-row">
+          <span>Section</span>
+          <strong id="section-readout">Booting</strong>
+        </div>
+        <div class="stat-row">
+          <span>State</span>
+          <strong id="state-readout">Idle</strong>
+        </div>
+        <div class="stat-row">
+          <span>Speed</span>
+          <strong id="speed-readout">0.0 m/s</strong>
+        </div>
+        <div class="stat-row">
+          <span>Stamina</span>
+          <strong id="stamina-readout">100%</strong>
+        </div>
+        <div class="stamina-track">
+          <div id="stamina-fill" class="stamina-fill"></div>
+        </div>
+      </div>
+
+      <div class="objective-card">
+        <p class="eyebrow">Current Objective</p>
+        <strong id="objective-title">Preparing course...</strong>
+        <p id="objective-copy">Loading the movement sandbox.</p>
+      </div>
+
+      <div class="controls-card">
+        <p class="eyebrow">Controls</p>
+        <ul>
+          <li><span>Move</span><strong>W A S D</strong></li>
+          <li><span>Jump / Double Jump</span><strong>Space</strong></li>
+          <li><span>Slide / Wall Slide</span><strong>Shift</strong></li>
+          <li><span>Invisible Dash</span><strong>Jump, then Shift</strong></li>
+          <li><span>Look</span><strong>Mouse</strong></li>
+          <li><span>Grab / Hold</span><strong>Left Mouse</strong></li>
+          <li><span>Regenerate Course</span><strong>R</strong></li>
+          <li><span>Respawn</span><strong>T</strong></li>
+        </ul>
+      </div>
+
+      <div class="hint-card">
+        <p class="eyebrow">Technique Notes</p>
+        <p id="hint-copy">
+          Double tap any movement key to sprint. In the air, Shift triggers a fast invisible dash
+          in the direction you are looking.
+        </p>
+      </div>
+
+      <div class="button-row">
+        <button id="lock-button" type="button">Enter Arena</button>
+        <button id="regen-button" type="button">Regenerate</button>
+      </div>
+    </aside>
+
+    <section class="viewport-shell">
+      <div id="viewport" class="viewport"></div>
+      <div class="crosshair" aria-hidden="true"></div>
+      <div id="overlay" class="overlay">
+        <div class="overlay-card">
+          <p class="eyebrow">Movement Build</p>
+          <h2>Parkour systems online</h2>
+          <p>
+            Click <strong>Enter Arena</strong> or click in the viewport. Mouse lock turns on first-person look.
+          </p>
+          <p id="overlay-copy">
+            Sprint by double tapping a movement key. While airborne, tap Shift to invis dash in the
+            direction you are looking.
+          </p>
+        </div>
+      </div>
+      <div id="prompt" class="prompt">Look at a hold or bar and hold left mouse to grab.</div>
+    </section>
+  </main>
+
+  <script type="module" src="./game.js"></script>
+</body>
+</html>
