@@ -39,6 +39,9 @@ const FAN_UPDRAFT = 7.5;
 const RAIL_ENTRY_MIN_T = 0.12;
 const RAIL_ENTRY_MAX_T = 0.88;
 const RAIL_EXIT_COOLDOWN = 420;
+const BAR_GRAB_IDEAL_DISTANCE = 2.2;
+const BAR_GRAB_DISTANCE_WINDOW = 1.45;
+const BAR_SWING_SCALE = 0.16;
 
 const viewport = document.getElementById("viewport");
 const viewportShell = document.querySelector(".viewport-shell");
@@ -81,6 +84,7 @@ const lastTapTimes = new Map();
 const tempForward = new THREE.Vector3();
 const tempRight = new THREE.Vector3();
 const tempMove = new THREE.Vector3();
+let runStarted = false;
 
 const world = {
   group: new THREE.Group(),
@@ -280,6 +284,7 @@ function addFan(x, z) {
 }
 
 function startRun() {
+  runStarted = true;
   overlay.classList.add("is-hidden");
   prompt.textContent = "Move with WASD, jump with Space, and Shift for slide or air dash.";
   clearInputs();
@@ -295,8 +300,11 @@ function requestArenaLock() {
 function onPointerLockChange() {
   const locked = document.pointerLockElement === renderer.domElement;
   document.body.classList.toggle("is-locked", locked);
-  overlay.classList.toggle("is-hidden", locked);
-  if (!locked) {
+  if (runStarted) overlay.classList.add("is-hidden");
+  else overlay.classList.toggle("is-hidden", locked);
+  if (!locked && runStarted) {
+    requestArenaLock();
+  } else if (!locked) {
     clearInputs();
     prompt.textContent = "Click in the arena to re-enter the run.";
   }
@@ -310,6 +318,7 @@ function onMouseMove(event) {
 
 function onMouseDown(event) {
   if (event.button !== 0 && event.button !== 2) return;
+  if (!runStarted) startRun();
   requestArenaLock();
   tryStartGrab(event.button === 0 ? "left" : "right");
 }
@@ -331,12 +340,15 @@ function onKeyDown(event) {
   if (["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ShiftLeft", "ShiftRight"].includes(event.code)) {
     event.preventDefault();
   }
-  if (document.pointerLockElement !== renderer.domElement && (event.code === "Space" || event.code === "Enter")) {
+  if (!runStarted && ["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ShiftLeft", "ShiftRight", "Enter"].includes(event.code)) {
     startRun();
-    return;
+    if (event.code === "Enter") return;
   }
   if (event.repeat && event.code !== "Space") return;
   keys.set(event.code, true);
+  if (runStarted && document.pointerLockElement !== renderer.domElement && ["KeyW", "KeyA", "KeyS", "KeyD"].includes(event.code)) {
+    requestArenaLock();
+  }
   if (["KeyW", "KeyA", "KeyS", "KeyD"].includes(event.code) && !event.repeat) {
     const now = performance.now();
     const lastTap = lastTapTimes.get(event.code) || 0;
@@ -646,7 +658,7 @@ function tryStartGrab(hand) {
       hand,
       target: best,
       swingAngle: 0,
-      swingVelocity: THREE.MathUtils.clamp(player.velocity.z * -0.05, -1.2, 1.2),
+      swingVelocity: getBarGrabSwingVelocity(best, origin),
       pullBlend: 0,
     };
   } else {
@@ -796,6 +808,7 @@ function resetPlayer() {
   player.grab = null;
   player.grinding = null;
   player.railCooldownUntil = 0;
+  runStarted = true;
   clearInputs();
 }
 
@@ -827,6 +840,14 @@ function getBarAnchorPosition(bar, angle = 0) {
   return bar.center.clone().add(hangOffset);
 }
 
+function getBarGrabSwingVelocity(bar, origin) {
+  const distance = origin.distanceTo(bar.center);
+  const distanceFactor = clamp(1 - Math.abs(distance - BAR_GRAB_IDEAL_DISTANCE) / BAR_GRAB_DISTANCE_WINDOW, 0.18, 1);
+  const speedFactor = clamp(Math.abs(player.velocity.z) / RUN_SPEED, 0.18, 1.4);
+  const verticalBonus = clamp(-player.velocity.y * 0.035, -0.35, 0.35);
+  return THREE.MathUtils.clamp((-player.velocity.z * BAR_SWING_SCALE + verticalBonus) * distanceFactor * speedFactor, -3.2, 3.2);
+}
+
 function updateHandVisual(element, hand) {
   if (!element) return;
   const engaged = player.grab?.hand === hand;
@@ -840,10 +861,12 @@ function updateHandVisual(element, hand) {
     ? player.grab.target.center.clone().add(new THREE.Vector3(hand === "left" ? -0.45 : 0.45, 0, 0))
     : player.grab.target.point.clone();
   const projected = targetPoint.project(camera);
-  const handX = projected.x * viewport.clientWidth * 0.34;
-  const handY = -projected.y * viewport.clientHeight * 0.34 - 80;
-  element.style.setProperty("--hand-x", handX.toFixed(1) + "px");
-  element.style.setProperty("--hand-y", handY.toFixed(1) + "px");
+  const targetScreenX = (projected.x * 0.5 + 0.5) * viewport.clientWidth;
+  const targetScreenY = (-projected.y * 0.5 + 0.5) * viewport.clientHeight;
+  const baseCenterX = hand === "left" ? 34 + 60 : viewport.clientWidth - 34 - 60;
+  const baseCenterY = viewport.clientHeight - 18 - 75;
+  element.style.setProperty("--hand-x", (targetScreenX - baseCenterX).toFixed(1) + "px");
+  element.style.setProperty("--hand-y", (targetScreenY - baseCenterY).toFixed(1) + "px");
 }
 
 function nearestPointOnSegment(point, start, end) {
