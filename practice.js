@@ -29,13 +29,16 @@ const MAX_LOOK_UP = Math.PI * 0.47;
 const MOUSE_SENSITIVITY = 0.0022;
 const AIR_DASH_SPEED = 24;
 const AIR_DASH_DURATION = 0.18;
-const BAR_GRAB_RANGE = 2.8;
-const HOLD_GRAB_RANGE = 3.1;
+const BAR_GRAB_RANGE = 4.8;
+const HOLD_GRAB_RANGE = 4.7;
 const RAIL_SNAP_RANGE = 1.05;
 const RAIL_SPEED = 17.5;
 const JUMP_PAD_POWER = 15.8;
 const FAN_FORCE = 18;
 const FAN_UPDRAFT = 7.5;
+const RAIL_ENTRY_MIN_T = 0.12;
+const RAIL_ENTRY_MAX_T = 0.88;
+const RAIL_EXIT_COOLDOWN = 420;
 
 const viewport = document.getElementById("viewport");
 const viewportShell = document.querySelector(".viewport-shell");
@@ -69,6 +72,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.domElement.tabIndex = 0;
 viewport.appendChild(renderer.domElement);
 
 const clock = new THREE.Clock();
@@ -110,6 +114,7 @@ const player = {
   lastWallJumpTime: 0,
   grab: null,
   grinding: null,
+  railCooldownUntil: 0,
   checkpoint: new THREE.Vector3(0, 0, 26),
   checkpointYaw: Math.PI,
 };
@@ -125,6 +130,7 @@ window.addEventListener("keydown", onKeyDown);
 window.addEventListener("keyup", onKeyUp);
 window.addEventListener("mousedown", onMouseDown);
 window.addEventListener("mouseup", onMouseUp);
+window.addEventListener("blur", onWindowBlur);
 document.addEventListener("mousemove", onMouseMove);
 document.addEventListener("pointerlockchange", onPointerLockChange);
 window.addEventListener("contextmenu", onContextMenu);
@@ -276,10 +282,13 @@ function addFan(x, z) {
 function startRun() {
   overlay.classList.add("is-hidden");
   prompt.textContent = "Move with WASD, jump with Space, and Shift for slide or air dash.";
+  clearInputs();
+  renderer.domElement.focus();
   requestArenaLock();
 }
 
 function requestArenaLock() {
+  renderer.domElement.focus();
   renderer.domElement.requestPointerLock?.();
 }
 
@@ -288,6 +297,7 @@ function onPointerLockChange() {
   document.body.classList.toggle("is-locked", locked);
   overlay.classList.toggle("is-hidden", locked);
   if (!locked) {
+    clearInputs();
     prompt.textContent = "Click in the arena to re-enter the run.";
   }
 }
@@ -313,7 +323,14 @@ function onContextMenu(event) {
   if (viewportShell.contains(event.target)) event.preventDefault();
 }
 
+function onWindowBlur() {
+  clearInputs();
+}
+
 function onKeyDown(event) {
+  if (["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ShiftLeft", "ShiftRight"].includes(event.code)) {
+    event.preventDefault();
+  }
   if (document.pointerLockElement !== renderer.domElement && (event.code === "Space" || event.code === "Enter")) {
     startRun();
     return;
@@ -340,6 +357,12 @@ function onKeyDown(event) {
 function onKeyUp(event) {
   keys.set(event.code, false);
   if (event.code === player.runKey) player.runKey = null;
+}
+
+function clearInputs() {
+  keys.clear();
+  player.runKey = null;
+  player.runLatchUntil = 0;
 }
 
 function attemptJump() {
@@ -573,9 +596,10 @@ function updateSpecialVolumes(delta) {
       player.velocity.y += FAN_UPDRAFT * delta;
     }
   }
-  if (player.grinding) return;
+  if (player.grinding || performance.now() < player.railCooldownUntil) return;
   for (const rail of world.rails) {
     const nearest = nearestPointOnSegment(player.position, rail.start, rail.end);
+    if (nearest.t <= RAIL_ENTRY_MIN_T || nearest.t >= RAIL_ENTRY_MAX_T) continue;
     if (nearest.distanceTo(player.position) <= RAIL_SNAP_RANGE && player.velocity.y <= 1.6) {
       player.grinding = { rail, progress: nearest.t * rail.length };
       player.velocity.set(0, 0, 0);
@@ -591,9 +615,12 @@ function updateRail(delta) {
   grind.progress += RAIL_SPEED * delta;
   const t = grind.progress / grind.rail.length;
   if (t >= 1) {
-    releaseRail(false);
-    player.velocity.copy(grind.rail.direction.clone().multiplyScalar(8.5));
-    player.velocity.y = 3.4;
+    const exitDirection = grind.rail.direction.clone();
+    player.grinding = null;
+    player.railCooldownUntil = performance.now() + RAIL_EXIT_COOLDOWN;
+    player.position.copy(grind.rail.end).add(new THREE.Vector3(0, 0.72, 0)).addScaledVector(exitDirection, 0.9);
+    player.velocity.copy(exitDirection.multiplyScalar(9.4));
+    player.velocity.y = 3.8;
     return;
   }
   player.position.copy(grind.rail.start).lerp(grind.rail.end, t).add(new THREE.Vector3(0, 0.52, 0));
@@ -603,6 +630,7 @@ function releaseRail(fromJump) {
   if (!player.grinding) return;
   const rail = player.grinding.rail;
   player.grinding = null;
+  player.railCooldownUntil = performance.now() + RAIL_EXIT_COOLDOWN;
   if (fromJump) player.velocity.copy(rail.direction.clone().multiplyScalar(7.2));
 }
 
@@ -613,10 +641,16 @@ function tryStartGrab(hand) {
   const best = getTargetedGrabbable(origin, look);
   if (!best) return;
   if (best.type === "bar") {
-    player.grab = { type: "bar", hand, target: best, swingAngle: 0, swingVelocity: THREE.MathUtils.clamp(player.velocity.z * -0.05, -1.2, 1.2) };
+    player.grab = {
+      type: "bar",
+      hand,
+      target: best,
+      swingAngle: 0,
+      swingVelocity: THREE.MathUtils.clamp(player.velocity.z * -0.05, -1.2, 1.2),
+      pullBlend: 0,
+    };
   } else {
-    player.grab = { type: "hold", hand, target: best };
-    player.position.copy(getHoldAnchorPosition(best)).add(new THREE.Vector3(0, -1.18, 0));
+    player.grab = { type: "hold", hand, target: best, pullBlend: 0 };
   }
   player.velocity.set(0, 0, 0);
   player.grounded = false;
@@ -626,18 +660,22 @@ function tryStartGrab(hand) {
 function updateGrab(delta) {
   if (!player.grab) return;
   if (player.grab.type === "bar") {
+    const targetPosition = getBarAnchorPosition(player.grab.target, player.grab.swingAngle);
+    player.grab.pullBlend = Math.min(1, player.grab.pullBlend + delta * 3.8);
+    player.position.lerp(targetPosition, Math.min(1, delta * (8 + player.grab.pullBlend * 8)));
     const moveInput = getMoveInput();
     player.grab.swingVelocity += moveInput.y * 2.8 * delta;
     player.grab.swingVelocity += -Math.sin(player.grab.swingAngle) * 6.2 * delta;
     player.grab.swingVelocity *= Math.pow(0.985, delta * 60);
     player.grab.swingAngle += player.grab.swingVelocity * delta;
-    const hangOffset = new THREE.Vector3(0, -Math.cos(player.grab.swingAngle) * 1.8, Math.sin(player.grab.swingAngle) * 1.8);
-    player.position.copy(player.grab.target.center).add(hangOffset);
+    const swingTarget = getBarAnchorPosition(player.grab.target, player.grab.swingAngle);
+    player.position.lerp(swingTarget, Math.min(1, delta * 14));
     return;
   }
   const moveInput = getMoveInput();
   const hold = player.grab.target;
-  player.position.lerp(getHoldAnchorPosition(hold).add(new THREE.Vector3(0, -1.18, 0)), Math.min(1, delta * 18));
+  player.grab.pullBlend = Math.min(1, player.grab.pullBlend + delta * 3.5);
+  player.position.lerp(getHoldBodyAnchorPosition(hold), Math.min(1, delta * (10 + player.grab.pullBlend * 8)));
   if (moveInput.lengthSq() <= 0.2) return;
   const desired = moveInput.clone().normalize();
   let nextHold = null;
@@ -742,6 +780,8 @@ function respawn() {
   player.airDashActiveUntil = 0;
   player.grab = null;
   player.grinding = null;
+  player.railCooldownUntil = 0;
+  clearInputs();
 }
 
 function resetPlayer() {
@@ -755,6 +795,8 @@ function resetPlayer() {
   player.runLatchUntil = 0;
   player.grab = null;
   player.grinding = null;
+  player.railCooldownUntil = 0;
+  clearInputs();
 }
 
 function getTargetedGrabbable(origin = camera.getWorldPosition(new THREE.Vector3()), look = getCameraForward()) {
@@ -765,7 +807,7 @@ function getTargetedGrabbable(origin = camera.getWorldPosition(new THREE.Vector3
     const distance = origin.distanceTo(point);
     const maxRange = target.type === "bar" ? BAR_GRAB_RANGE : HOLD_GRAB_RANGE;
     if (distance > maxRange || distance >= bestDistance) continue;
-    if (look.dot(point.clone().sub(origin).normalize()) < 0.84) continue;
+    if (look.dot(point.clone().sub(origin).normalize()) < 0.72) continue;
     best = target;
     bestDistance = distance;
   }
@@ -774,6 +816,15 @@ function getTargetedGrabbable(origin = camera.getWorldPosition(new THREE.Vector3
 
 function getHoldAnchorPosition(hold) {
   return hold.point.clone().add((hold.normal || new THREE.Vector3(0, 0, 1)).clone().multiplyScalar(PLAYER_RADIUS + 0.3));
+}
+
+function getHoldBodyAnchorPosition(hold) {
+  return getHoldAnchorPosition(hold).add(new THREE.Vector3(0, -1.18, 0));
+}
+
+function getBarAnchorPosition(bar, angle = 0) {
+  const hangOffset = new THREE.Vector3(0, -Math.cos(angle) * 1.8, Math.sin(angle) * 1.8);
+  return bar.center.clone().add(hangOffset);
 }
 
 function updateHandVisual(element, hand) {
@@ -787,7 +838,7 @@ function updateHandVisual(element, hand) {
   }
   const targetPoint = player.grab.type === "bar"
     ? player.grab.target.center.clone().add(new THREE.Vector3(hand === "left" ? -0.45 : 0.45, 0, 0))
-    : player.grab.target.point;
+    : player.grab.target.point.clone();
   const projected = targetPoint.project(camera);
   const handX = projected.x * viewport.clientWidth * 0.34;
   const handY = -projected.y * viewport.clientHeight * 0.34 - 80;
