@@ -43,6 +43,12 @@ const BAR_GRAB_IDEAL_DISTANCE = 2.2;
 const BAR_GRAB_DISTANCE_WINDOW = 2.55;
 const BAR_SWING_SCALE = 0.22;
 const SPAWN_DROP_HEIGHT = 2.15;
+const ITEM_PICKUP_RANGE = 5.2;
+const BLASTER_FIRE_COOLDOWN = 180;
+const BULLET_SPEED = 62;
+const BULLET_LIFETIME = 1.8;
+const FAN_LAUNCH_COOLDOWN = 650;
+const FAN_LAUNCH_SPEED = 33;
 
 const viewport = document.getElementById("viewport");
 const viewportShell = document.querySelector(".viewport-shell");
@@ -81,6 +87,7 @@ viewport.appendChild(renderer.domElement);
 
 const clock = new THREE.Clock();
 const keys = new Map();
+const mouseHeld = { left: false, right: false };
 const lastTapTimes = new Map();
 const tempForward = new THREE.Vector3();
 const tempRight = new THREE.Vector3();
@@ -95,6 +102,9 @@ const world = {
   jumpPads: [],
   fans: [],
   grabbables: [],
+  items: [],
+  bullets: [],
+  dummies: [],
 };
 scene.add(world.group);
 
@@ -119,8 +129,10 @@ const player = {
   lastWallJumpTime: 0,
   grab: null,
   holds: { left: null, right: null },
+  items: { left: null, right: null },
   grinding: null,
   railCooldownUntil: 0,
+  fanLaunchUntil: 0,
   checkpoint: new THREE.Vector3(0, SPAWN_DROP_HEIGHT, 26),
   checkpointYaw: Math.PI,
 };
@@ -174,6 +186,8 @@ function setupScene() {
 
 function buildPracticeArena() {
   addPlatform(0, -30, 220, 220, 0, 0x8e8e8e, true);
+  addBlasterPedestal(2.2, 29.4);
+  addTestDummy(-5.5, 34);
   addPlatform(0, 16, 12, 16, 0, 0x9f9f9f, false);
   addWall(0, -8, 9, 1.2, 1.2, 2.1, 0x7c7c7c, false);
   addWall(-14, -22, 0.8, 12, 0, 7, 0x777777, true);
@@ -287,6 +301,97 @@ function addFan(x, z) {
   world.fans.push({ box: new THREE.Box3(new THREE.Vector3(x - 3.5, 0, z - 3.9), new THREE.Vector3(x + 3.5, 3.5, z + 3.3)), direction: new THREE.Vector3(0, 0.38, -0.92).normalize() });
 }
 
+function addBlasterPedestal(x, z) {
+  const pedestal = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.7, 0.9, 0.85, 18),
+    new THREE.MeshStandardMaterial({ color: 0xaeb6c1, roughness: 0.42, metalness: 0.5 }),
+  );
+  pedestal.position.set(x, 0.42, z);
+  pedestal.castShadow = true;
+  pedestal.receiveShadow = true;
+  world.group.add(pedestal);
+
+  const glow = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.58, 0.58, 0.08, 18),
+    new THREE.MeshStandardMaterial({ color: 0x1d8dff, emissive: 0x0957b8, emissiveIntensity: 0.55, roughness: 0.35 }),
+  );
+  glow.position.set(x, 0.88, z);
+  glow.castShadow = true;
+  world.group.add(glow);
+  addBlasterItem(new THREE.Vector3(x, 1.2, z));
+}
+
+function addBlasterItem(position) {
+  const mesh = createBlasterMesh();
+  mesh.position.copy(position);
+  mesh.rotation.set(0, Math.PI / 2, -0.16);
+  mesh.castShadow = true;
+  world.group.add(mesh);
+  world.items.push({
+    type: "blaster",
+    mesh,
+    heldBy: null,
+    pickupRadius: 0.75,
+    fireCooldownUntil: 0,
+  });
+}
+
+function createBlasterMesh() {
+  const group = new THREE.Group();
+  const silver = new THREE.MeshStandardMaterial({ color: 0xc8d3df, roughness: 0.32, metalness: 0.68 });
+  const blue = new THREE.MeshStandardMaterial({ color: 0x1379ff, emissive: 0x073d96, emissiveIntensity: 0.35, roughness: 0.38, metalness: 0.22 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x162231, roughness: 0.55, metalness: 0.3 });
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.28, 0.26), silver);
+  body.position.x = 0.02;
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.095, 0.62, 14), blue);
+  barrel.rotation.z = Math.PI / 2;
+  barrel.position.x = -0.58;
+  const core = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.16, 0.3), blue);
+  core.position.x = -0.08;
+  core.position.y = 0.05;
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.42, 0.18), dark);
+  grip.position.set(0.28, -0.32, 0);
+  grip.rotation.z = -0.22;
+
+  for (const part of [body, barrel, core, grip]) {
+    part.castShadow = true;
+    group.add(part);
+  }
+  return group;
+}
+
+function addTestDummy(x, z) {
+  const group = new THREE.Group();
+  const dummyMaterial = new THREE.MeshStandardMaterial({ color: 0xd9cab0, roughness: 0.8, metalness: 0.02 });
+  const jointMaterial = new THREE.MeshStandardMaterial({ color: 0x49515b, roughness: 0.72, metalness: 0.08 });
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.58, 0.28, 18), jointMaterial);
+  base.position.y = 0.14;
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.85, 6, 12), dummyMaterial);
+  torso.position.y = 1.1;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.23, 16, 16), dummyMaterial);
+  head.position.y = 1.85;
+  const shoulder = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.16, 0.16), jointMaterial);
+  shoulder.position.y = 1.42;
+
+  for (const part of [base, torso, head, shoulder]) {
+    part.castShadow = true;
+    part.receiveShadow = true;
+    group.add(part);
+  }
+  group.position.set(x, 0, z);
+  world.group.add(group);
+  world.dummies.push({
+    group,
+    origin: new THREE.Vector3(x, 0, z),
+    lean: new THREE.Vector2(),
+    leanVelocity: new THREE.Vector2(),
+    radius: 0.72,
+    minY: 0.2,
+    maxY: 2.1,
+  });
+}
+
 function startRun() {
   runStarted = true;
   overlay.classList.add("is-hidden");
@@ -321,14 +426,23 @@ function onMouseMove(event) {
 
 function onMouseDown(event) {
   if (event.button !== 0 && event.button !== 2) return;
+  const hand = event.button === 0 ? "left" : "right";
+  mouseHeld[hand] = true;
   if (!runStarted) startRun();
   requestArenaLock();
-  tryStartGrab(event.button === 0 ? "left" : "right");
+  if (player.items[hand]) {
+    useHeldItem(hand);
+    return;
+  }
+  if (tryPickupItem(hand)) return;
+  tryStartGrab(hand);
 }
 
 function onMouseUp(event) {
   if (event.button !== 0 && event.button !== 2) return;
-  releaseGrab(event.button === 0 ? "left" : "right", true);
+  const hand = event.button === 0 ? "left" : "right";
+  mouseHeld[hand] = false;
+  releaseGrab(hand, true);
 }
 
 function onContextMenu(event) {
@@ -350,7 +464,7 @@ function onVisibilityChange() {
 }
 
 function onKeyDown(event) {
-  if (["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ShiftLeft", "ShiftRight"].includes(event.code)) {
+  if (["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ShiftLeft", "ShiftRight", "KeyF"].includes(event.code)) {
     event.preventDefault();
   }
   if (!runStarted && ["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ShiftLeft", "ShiftRight", "Enter"].includes(event.code)) {
@@ -377,6 +491,7 @@ function onKeyDown(event) {
   }
   if (event.code === "KeyR") resetPlayer();
   if (event.code === "KeyT") respawn();
+  if (event.code === "KeyF") dropMouseHeldItems();
 }
 
 function onKeyUp(event) {
@@ -386,6 +501,8 @@ function onKeyUp(event) {
 
 function clearInputs() {
   keys.clear();
+  mouseHeld.left = false;
+  mouseHeld.right = false;
   player.runKey = null;
   player.runLatchUntil = 0;
 }
@@ -455,6 +572,9 @@ function updatePlayer(delta, now) {
   }
   updateWallContact();
   syncRig();
+  updateHeldItems();
+  updateBullets(delta);
+  updateDummies(delta);
   if (player.position.y < -18) respawn();
 }
 
@@ -610,15 +730,24 @@ function performWallJump() {
 function updateSpecialVolumes(delta) {
   for (const pad of world.jumpPads) {
     if (boxContainsPoint(pad.box, player.position, PLAYER_RADIUS * 0.6) && player.velocity.y <= 0.4) {
-      player.velocity.y = JUMP_PAD_POWER;
-      player.velocity.z -= 2;
+      const horizontalSpeed = Math.hypot(player.velocity.x, player.velocity.z);
+      const downwardSpeed = Math.max(0, -player.velocity.y);
+      player.velocity.y = JUMP_PAD_POWER + horizontalSpeed * 0.72 + downwardSpeed * 0.35;
+      player.velocity.addScaledVector(getPlanarForward(), Math.min(10, horizontalSpeed * 0.45));
       player.airDashReady = true;
     }
   }
   for (const fan of world.fans) {
     if (boxContainsPoint(fan.box, player.position, PLAYER_RADIUS)) {
-      player.velocity.addScaledVector(fan.direction, FAN_FORCE * delta);
-      player.velocity.y += FAN_UPDRAFT * delta;
+      const now = performance.now();
+      player.velocity.addScaledVector(fan.direction, FAN_FORCE * 2.4 * delta);
+      player.velocity.y += FAN_UPDRAFT * 2 * delta;
+      if (now >= player.fanLaunchUntil) {
+        player.velocity.addScaledVector(fan.direction, FAN_LAUNCH_SPEED);
+        player.velocity.y = Math.max(player.velocity.y, 9.5);
+        player.airDashReady = true;
+        player.fanLaunchUntil = now + FAN_LAUNCH_COOLDOWN;
+      }
     }
   }
   if (player.grinding || performance.now() < player.railCooldownUntil) return;
@@ -659,8 +788,130 @@ function releaseRail(fromJump) {
   if (fromJump) player.velocity.copy(rail.direction.clone().multiplyScalar(7.2));
 }
 
+function tryPickupItem(hand) {
+  if (player.items[hand] || player.holds[hand] || player.grab || player.grinding) return false;
+  const item = getTargetedItem();
+  if (!item) return false;
+  item.heldBy = hand;
+  player.items[hand] = item;
+  updateHeldItems();
+  prompt.textContent = `${hand === "left" ? "Left" : "Right"} hand blaster ready. Click to shoot, hold that mouse button and press F to drop.`;
+  return true;
+}
+
+function useHeldItem(hand) {
+  const item = player.items[hand];
+  if (!item || item.type !== "blaster") return;
+  const now = performance.now();
+  if (now < item.fireCooldownUntil) return;
+  item.fireCooldownUntil = now + BLASTER_FIRE_COOLDOWN;
+  fireBlaster(hand);
+}
+
+function fireBlaster(hand) {
+  const origin = camera.getWorldPosition(new THREE.Vector3());
+  const direction = getCameraForward();
+  const handOffset = getCameraRight().multiplyScalar(hand === "left" ? -0.28 : 0.28);
+  const muzzle = origin.addScaledVector(direction, 0.82).add(handOffset).add(new THREE.Vector3(0, -0.18, 0));
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.055, 10, 10),
+    new THREE.MeshStandardMaterial({ color: 0x59c7ff, emissive: 0x168fff, emissiveIntensity: 1.2, roughness: 0.2 }),
+  );
+  mesh.position.copy(muzzle);
+  mesh.castShadow = true;
+  world.group.add(mesh);
+  world.bullets.push({
+    mesh,
+    position: muzzle.clone(),
+    velocity: direction.multiplyScalar(BULLET_SPEED).addScaledVector(player.velocity, 0.18),
+    life: BULLET_LIFETIME,
+  });
+}
+
+function dropMouseHeldItems() {
+  if (mouseHeld.left) dropHeldItem("left");
+  if (mouseHeld.right) dropHeldItem("right");
+}
+
+function dropHeldItem(hand) {
+  const item = player.items[hand];
+  if (!item) return;
+  const forward = getCameraForward();
+  item.heldBy = null;
+  item.mesh.position.copy(player.position).add(new THREE.Vector3(0, 0.56, 0)).addScaledVector(forward, 1.35);
+  item.mesh.position.y = Math.max(0.42, item.mesh.position.y);
+  item.mesh.rotation.set(0, player.yaw + Math.PI / 2, -0.16);
+  player.items[hand] = null;
+  prompt.textContent = `${hand === "left" ? "Left" : "Right"} hand dropped the blaster.`;
+}
+
+function updateHeldItems() {
+  for (const hand of ["left", "right"]) {
+    const item = player.items[hand];
+    if (!item) continue;
+    const pose = getHandItemPose(hand);
+    item.mesh.position.copy(pose.position);
+    item.mesh.quaternion.copy(pose.quaternion);
+  }
+}
+
+function updateBullets(delta) {
+  for (let index = world.bullets.length - 1; index >= 0; index -= 1) {
+    const bullet = world.bullets[index];
+    bullet.life -= delta;
+    bullet.velocity.y -= GRAVITY * 0.18 * delta;
+    bullet.position.addScaledVector(bullet.velocity, delta);
+    bullet.mesh.position.copy(bullet.position);
+    const hitDummy = getBulletHitDummy(bullet);
+    if (hitDummy) {
+      applyDummyHit(hitDummy, bullet);
+      removeBullet(index);
+      continue;
+    }
+    if (bullet.life <= 0 || bullet.position.y <= 0.04) {
+      removeBullet(index);
+    }
+  }
+}
+
+function updateDummies(delta) {
+  for (const dummy of world.dummies) {
+    dummy.leanVelocity.addScaledVector(dummy.lean, -10 * delta);
+    dummy.leanVelocity.multiplyScalar(Math.pow(0.82, delta * 60));
+    dummy.lean.addScaledVector(dummy.leanVelocity, delta);
+    dummy.lean.x = clamp(dummy.lean.x, -0.35, 0.35);
+    dummy.lean.y = clamp(dummy.lean.y, -0.35, 0.35);
+    dummy.group.position.copy(dummy.origin);
+    dummy.group.rotation.set(dummy.lean.y, 0, -dummy.lean.x);
+  }
+}
+
+function removeBullet(index) {
+  const [bullet] = world.bullets.splice(index, 1);
+  world.group.remove(bullet.mesh);
+  bullet.mesh.geometry.dispose();
+  bullet.mesh.material.dispose();
+}
+
+function getBulletHitDummy(bullet) {
+  for (const dummy of world.dummies) {
+    const dx = bullet.position.x - dummy.origin.x;
+    const dz = bullet.position.z - dummy.origin.z;
+    if (dx * dx + dz * dz <= dummy.radius * dummy.radius && bullet.position.y >= dummy.minY && bullet.position.y <= dummy.maxY) {
+      return dummy;
+    }
+  }
+  return null;
+}
+
+function applyDummyHit(dummy, bullet) {
+  const impulse = bullet.velocity.clone().normalize().multiplyScalar(0.28);
+  dummy.leanVelocity.x += impulse.x;
+  dummy.leanVelocity.y += impulse.z;
+}
+
 function tryStartGrab(hand) {
-  if (player.grinding) return;
+  if (player.grinding || player.items[hand]) return;
   const origin = camera.getWorldPosition(new THREE.Vector3());
   const look = getCameraForward();
   const best = getTargetedGrabbable(origin, look);
@@ -760,6 +1011,24 @@ function getCameraForward() {
   return new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(player.pitch, player.yaw, 0, "YXZ")).normalize();
 }
 
+function getCameraRight() {
+  return new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(player.pitch, player.yaw, 0, "YXZ")).normalize();
+}
+
+function getHandItemPose(hand) {
+  const position = camera.getWorldPosition(new THREE.Vector3());
+  const quaternion = camera.getWorldQuaternion(new THREE.Quaternion());
+  const forward = getCameraForward();
+  const right = getCameraRight();
+  const side = hand === "left" ? -1 : 1;
+  position
+    .addScaledVector(forward, 0.74)
+    .addScaledVector(right, side * 0.34)
+    .add(new THREE.Vector3(0, -0.46, 0));
+  quaternion.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0, side * -0.42 - Math.PI / 2, side * 0.12)));
+  return { position, quaternion };
+}
+
 function canSprint(moveInput, now) {
   return Boolean(player.runKey && now <= player.runLatchUntil && player.stamina > 0 && keys.get(player.runKey) && moveInput.lengthSq() > 0.01 && !isGrabbing() && !player.grinding);
 }
@@ -769,7 +1038,9 @@ function updateUI(now = performance.now()) {
   const sprinting = canSprint(getMoveInput(), now);
   const slideActive = now < player.slideUntil;
   const dashActive = now < player.airDashActiveUntil;
-  const grabReady = Boolean(getTargetedGrabbable());
+  const pickupReady = Boolean(getTargetedItem());
+  const grabReady = Boolean(getTargetedGrabbable() || pickupReady);
+  const armed = Boolean(player.items.left || player.items.right);
   seedReadout.textContent = "Practice";
   sectionReadout.textContent = "Practice Void";
   speedReadout.textContent = speed.toFixed(1) + " m/s";
@@ -778,13 +1049,15 @@ function updateUI(now = performance.now()) {
   objectiveTitle.textContent = "Practice Void";
   objectiveCopy.textContent = "Use the fixed white-box arena to test the movement kit without waiting on generation.";
   hintCopy.textContent = "Slide under the low wall, wall-jump on the gray pillars, use the bar and climb holds, then test the rail, pad, and fan.";
-  stateReadout.textContent = isGrabbing() ? (player.grab ? "Swinging" : "Climbing") : player.grinding ? "Grinding" : dashActive ? "Dashing" : player.wallSliding ? "Wall Slide" : slideActive ? "Sliding" : sprinting ? "Running" : player.grounded ? "Grounded" : "Airborne";
+  stateReadout.textContent = armed ? "Armed" : isGrabbing() ? (player.grab ? "Swinging" : "Climbing") : player.grinding ? "Grinding" : dashActive ? "Dashing" : player.wallSliding ? "Wall Slide" : slideActive ? "Sliding" : sprinting ? "Running" : player.grounded ? "Grounded" : "Airborne";
   viewportShell.classList.toggle("is-dashing", dashActive);
   viewportShell.classList.toggle("is-grab-ready", grabReady);
   updateHandVisual(leftHandElement, "left");
   updateHandVisual(rightHandElement, "right");
   if (document.pointerLockElement === renderer.domElement) {
-    if (player.grab?.type === "bar") prompt.textContent = "Swing with W and S, then release left mouse to launch.";
+    if (pickupReady) prompt.textContent = "Click the blaster with either mouse button to pick it up in that hand.";
+    else if (armed) prompt.textContent = "Click a held blaster to shoot. Hold that mouse button and press F to drop it.";
+    else if (player.grab?.type === "bar") prompt.textContent = "Swing with W and S, then release left mouse to launch.";
     else if (getActiveHolds().length > 0) prompt.textContent = "Hold either mouse button on rocks. Use both hands to brace on two holds.";
     else if (player.grinding) prompt.textContent = "Rail locked. Space jumps you off early.";
     else if (player.wallSliding) prompt.textContent = "Wall slide active. Face the wall, then hit Space for the kick.";
@@ -838,6 +1111,20 @@ function getTargetedGrabbable(origin = camera.getWorldPosition(new THREE.Vector3
     if (distance > maxRange || distance >= bestDistance) continue;
     if (look.dot(point.clone().sub(origin).normalize()) < 0.72) continue;
     best = target;
+    bestDistance = distance;
+  }
+  return best;
+}
+
+function getTargetedItem(origin = camera.getWorldPosition(new THREE.Vector3()), look = getCameraForward()) {
+  let best = null;
+  let bestDistance = Infinity;
+  for (const item of world.items) {
+    if (item.heldBy) continue;
+    const distance = origin.distanceTo(item.mesh.position);
+    if (distance > ITEM_PICKUP_RANGE || distance >= bestDistance) continue;
+    if (look.dot(item.mesh.position.clone().sub(origin).normalize()) < 0.76) continue;
+    best = item;
     bestDistance = distance;
   }
   return best;
@@ -907,11 +1194,18 @@ function findNextHold(hold, desired) {
 function updateHandVisual(element, hand) {
   if (!element) return;
   const grip = player.grab?.hand === hand ? player.grab : player.holds[hand];
-  const engaged = Boolean(grip);
+  const item = player.items[hand];
+  const engaged = Boolean(grip || item);
   element.classList.toggle("is-engaged", engaged);
+  element.classList.toggle("is-holding-item", Boolean(item));
   if (!engaged) {
     element.style.setProperty("--hand-x", "0px");
     element.style.setProperty("--hand-y", "0px");
+    return;
+  }
+  if (item) {
+    element.style.setProperty("--hand-x", "0px");
+    element.style.setProperty("--hand-y", "-8px");
     return;
   }
   const targetPoint = grip.type === "bar"
