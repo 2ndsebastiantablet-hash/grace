@@ -40,8 +40,9 @@ const RAIL_ENTRY_MIN_T = 0.12;
 const RAIL_ENTRY_MAX_T = 0.88;
 const RAIL_EXIT_COOLDOWN = 420;
 const BAR_GRAB_IDEAL_DISTANCE = 2.2;
-const BAR_GRAB_DISTANCE_WINDOW = 1.45;
-const BAR_SWING_SCALE = 0.16;
+const BAR_GRAB_DISTANCE_WINDOW = 2.55;
+const BAR_SWING_SCALE = 0.22;
+const SPAWN_DROP_HEIGHT = 2.15;
 
 const viewport = document.getElementById("viewport");
 const viewportShell = document.querySelector(".viewport-shell");
@@ -98,7 +99,7 @@ const world = {
 scene.add(world.group);
 
 const player = {
-  position: new THREE.Vector3(0, 0, 26),
+  position: new THREE.Vector3(0, SPAWN_DROP_HEIGHT, 26),
   velocity: new THREE.Vector3(),
   yaw: Math.PI,
   pitch: 0,
@@ -117,9 +118,10 @@ const player = {
   lastWallCode: null,
   lastWallJumpTime: 0,
   grab: null,
+  holds: { left: null, right: null },
   grinding: null,
   railCooldownUntil: 0,
-  checkpoint: new THREE.Vector3(0, 0, 26),
+  checkpoint: new THREE.Vector3(0, SPAWN_DROP_HEIGHT, 26),
   checkpointYaw: Math.PI,
 };
 
@@ -135,6 +137,8 @@ window.addEventListener("keyup", onKeyUp);
 window.addEventListener("mousedown", onMouseDown);
 window.addEventListener("mouseup", onMouseUp);
 window.addEventListener("blur", onWindowBlur);
+window.addEventListener("focus", onWindowFocus);
+document.addEventListener("visibilitychange", onVisibilityChange);
 document.addEventListener("mousemove", onMouseMove);
 document.addEventListener("pointerlockchange", onPointerLockChange);
 window.addEventListener("contextmenu", onContextMenu);
@@ -303,10 +307,9 @@ function onPointerLockChange() {
   if (runStarted) overlay.classList.add("is-hidden");
   else overlay.classList.toggle("is-hidden", locked);
   if (!locked && runStarted) {
-    requestArenaLock();
+    prompt.textContent = "Click in the arena to re-enter mouse look. Movement still works.";
   } else if (!locked) {
-    clearInputs();
-    prompt.textContent = "Click in the arena to re-enter the run.";
+    prompt.textContent = "Press Play to enter the movement test arena.";
   }
 }
 
@@ -336,6 +339,16 @@ function onWindowBlur() {
   clearInputs();
 }
 
+function onWindowFocus() {
+  if (!runStarted) return;
+  renderer.domElement.focus();
+}
+
+function onVisibilityChange() {
+  if (document.hidden) clearInputs();
+  else onWindowFocus();
+}
+
 function onKeyDown(event) {
   if (["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ShiftLeft", "ShiftRight"].includes(event.code)) {
     event.preventDefault();
@@ -344,10 +357,10 @@ function onKeyDown(event) {
     startRun();
     if (event.code === "Enter") return;
   }
-  if (event.repeat && event.code !== "Space") return;
   keys.set(event.code, true);
+  if (event.repeat && !["KeyW", "KeyA", "KeyS", "KeyD", "ShiftLeft", "ShiftRight"].includes(event.code)) return;
   if (runStarted && document.pointerLockElement !== renderer.domElement && ["KeyW", "KeyA", "KeyS", "KeyD"].includes(event.code)) {
-    requestArenaLock();
+    renderer.domElement.focus();
   }
   if (["KeyW", "KeyA", "KeyS", "KeyD"].includes(event.code) && !event.repeat) {
     const now = performance.now();
@@ -378,9 +391,9 @@ function clearInputs() {
 }
 
 function attemptJump() {
-  if (player.grab) {
-    const boost = player.grab.type === "bar" ? 1.15 : 0.7;
-    releaseGrab(player.grab.hand, false);
+  if (isGrabbing()) {
+    const boost = player.grab?.type === "bar" ? 1.15 : 0.7;
+    releaseAllGrabs(false);
     player.velocity.y = Math.max(player.velocity.y, JUMP_SPEED * boost);
     return;
   }
@@ -409,7 +422,7 @@ function attemptJump() {
 }
 
 function attemptAirDash() {
-  if (player.grounded || player.grab || player.grinding || !player.airDashReady || player.wallContact) return false;
+  if (player.grounded || isGrabbing() || player.grinding || !player.airDashReady || player.wallContact) return false;
   const dashDirection = getCameraForward();
   player.airDashReady = false;
   player.airDashActiveUntil = performance.now() + AIR_DASH_DURATION * 1000;
@@ -418,7 +431,7 @@ function attemptAirDash() {
 }
 
 function attemptSlide() {
-  if (!player.grounded || player.grab || player.grinding) return;
+  if (!player.grounded || isGrabbing() || player.grinding) return;
   if (Math.hypot(player.velocity.x, player.velocity.z) < 4.2) return;
   player.slideUntil = performance.now() + SLIDE_DURATION * 1000;
   player.velocity.addScaledVector(getPlanarForward(), SLIDE_BOOST);
@@ -434,7 +447,7 @@ function tick() {
 }
 
 function updatePlayer(delta, now) {
-  if (player.grab) updateGrab(delta);
+  if (isGrabbing()) updateGrab(delta);
   else if (player.grinding) updateRail(delta);
   else {
     updateWallContact();
@@ -553,7 +566,7 @@ function resolveHorizontalCollisions() {
 function updateWallContact() {
   player.wallSliding = false;
   player.wallContact = null;
-  if (player.grounded || player.grab || player.grinding) return;
+  if (player.grounded || isGrabbing() || player.grinding) return;
   const lookForward = getCameraForward();
   const threshold = PLAYER_RADIUS + WALL_GRAB_RANGE;
   for (const collider of world.colliders) {
@@ -647,12 +660,13 @@ function releaseRail(fromJump) {
 }
 
 function tryStartGrab(hand) {
-  if (player.grab || player.grinding) return;
+  if (player.grinding) return;
   const origin = camera.getWorldPosition(new THREE.Vector3());
   const look = getCameraForward();
   const best = getTargetedGrabbable(origin, look);
   if (!best) return;
   if (best.type === "bar") {
+    if (isGrabbing()) return;
     player.grab = {
       type: "bar",
       hand,
@@ -662,7 +676,9 @@ function tryStartGrab(hand) {
       pullBlend: 0,
     };
   } else {
-    player.grab = { type: "hold", hand, target: best, pullBlend: 0 };
+    if (player.grab || player.holds[hand]) return;
+    if (Object.values(player.holds).some((grip) => grip?.target === best)) return;
+    player.holds[hand] = { type: "hold", hand, target: best, pullBlend: 0 };
   }
   player.velocity.set(0, 0, 0);
   player.grounded = false;
@@ -670,8 +686,7 @@ function tryStartGrab(hand) {
 }
 
 function updateGrab(delta) {
-  if (!player.grab) return;
-  if (player.grab.type === "bar") {
+  if (player.grab?.type === "bar") {
     const targetPosition = getBarAnchorPosition(player.grab.target, player.grab.swingAngle);
     player.grab.pullBlend = Math.min(1, player.grab.pullBlend + delta * 3.8);
     player.position.lerp(targetPosition, Math.min(1, delta * (8 + player.grab.pullBlend * 8)));
@@ -685,44 +700,41 @@ function updateGrab(delta) {
     return;
   }
   const moveInput = getMoveInput();
-  const hold = player.grab.target;
-  player.grab.pullBlend = Math.min(1, player.grab.pullBlend + delta * 3.5);
-  player.position.lerp(getHoldBodyAnchorPosition(hold), Math.min(1, delta * (10 + player.grab.pullBlend * 8)));
+  const activeHolds = getActiveHolds();
+  const bodyAnchor = getHoldPairBodyAnchor(activeHolds);
+  const strongestBlend = activeHolds.reduce((best, grip) => Math.max(best, grip.pullBlend), 0);
+  for (const grip of activeHolds) grip.pullBlend = Math.min(1, grip.pullBlend + delta * 3.5);
+  player.position.lerp(bodyAnchor, Math.min(1, delta * (10 + strongestBlend * 8)));
   if (moveInput.lengthSq() <= 0.2) return;
   const desired = moveInput.clone().normalize();
-  let nextHold = null;
-  let bestScore = 0.3;
-  for (const candidate of world.grabbables) {
-    if (candidate.type !== "hold" || candidate.clusterId !== hold.clusterId || candidate === hold) continue;
-    const offset = candidate.point.clone().sub(hold.point);
-    if (offset.length() > 2.6) continue;
-    const direction = new THREE.Vector2(offset.x, offset.y);
-    if (direction.lengthSq() < 0.01) continue;
-    const score = direction.normalize().dot(desired) - offset.length() * 0.08;
-    if (score > bestScore) {
-      nextHold = candidate;
-      bestScore = score;
+  for (const grip of activeHolds) {
+    const nextHold = findNextHold(grip.target, desired);
+    if (nextHold && !Object.values(player.holds).some((otherGrip) => otherGrip !== grip && otherGrip?.target === nextHold)) {
+      grip.target = nextHold;
+      grip.pullBlend = 0.35;
     }
   }
-  if (nextHold) player.grab.target = nextHold;
 }
 
 function releaseGrab(hand, fromMouseUp) {
-  if (!player.grab || player.grab.hand !== hand) return;
-  if (player.grab.type === "bar") {
+  if (player.grab?.hand === hand) {
     const releaseVector = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(1, 0, 0), player.grab.swingAngle).normalize();
     player.velocity.copy(releaseVector.multiplyScalar(10 + Math.abs(player.grab.swingVelocity) * 6));
     player.velocity.y += 3.2;
-  } else if (fromMouseUp) {
+    player.grab = null;
+    return;
+  }
+  if (!player.holds[hand]) return;
+  player.holds[hand] = null;
+  if (fromMouseUp && !isGrabbing()) {
     player.velocity.y = Math.max(player.velocity.y, 1.4);
   }
-  player.grab = null;
 }
 
 function updateCamera(delta) {
   camera.rotation.set(player.pitch, 0, 0);
   const bobSpeed = Math.min(1, Math.hypot(player.velocity.x, player.velocity.z) / RUN_SPEED);
-  const bob = player.grounded && !player.grab && !player.grinding ? Math.sin(performance.now() * 0.015 * (1 + bobSpeed * 2.4)) * 0.03 * bobSpeed : 0;
+  const bob = player.grounded && !isGrabbing() && !player.grinding ? Math.sin(performance.now() * 0.015 * (1 + bobSpeed * 2.4)) * 0.03 * bobSpeed : 0;
   camera.position.y = player.height - 0.12 + bob;
   const targetFov = player.grinding ? 92 : player.wallSliding ? 88 : canSprint(getMoveInput(), performance.now()) ? 90 : 82;
   camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 6 * delta);
@@ -749,7 +761,7 @@ function getCameraForward() {
 }
 
 function canSprint(moveInput, now) {
-  return Boolean(player.runKey && now <= player.runLatchUntil && player.stamina > 0 && keys.get(player.runKey) && moveInput.lengthSq() > 0.01 && !player.grab && !player.grinding);
+  return Boolean(player.runKey && now <= player.runLatchUntil && player.stamina > 0 && keys.get(player.runKey) && moveInput.lengthSq() > 0.01 && !isGrabbing() && !player.grinding);
 }
 
 function updateUI(now = performance.now()) {
@@ -766,14 +778,14 @@ function updateUI(now = performance.now()) {
   objectiveTitle.textContent = "Practice Void";
   objectiveCopy.textContent = "Use the fixed white-box arena to test the movement kit without waiting on generation.";
   hintCopy.textContent = "Slide under the low wall, wall-jump on the gray pillars, use the bar and climb holds, then test the rail, pad, and fan.";
-  stateReadout.textContent = player.grab ? (player.grab.type === "bar" ? "Swinging" : "Climbing") : player.grinding ? "Grinding" : dashActive ? "Dashing" : player.wallSliding ? "Wall Slide" : slideActive ? "Sliding" : sprinting ? "Running" : player.grounded ? "Grounded" : "Airborne";
+  stateReadout.textContent = isGrabbing() ? (player.grab ? "Swinging" : "Climbing") : player.grinding ? "Grinding" : dashActive ? "Dashing" : player.wallSliding ? "Wall Slide" : slideActive ? "Sliding" : sprinting ? "Running" : player.grounded ? "Grounded" : "Airborne";
   viewportShell.classList.toggle("is-dashing", dashActive);
   viewportShell.classList.toggle("is-grab-ready", grabReady);
   updateHandVisual(leftHandElement, "left");
   updateHandVisual(rightHandElement, "right");
   if (document.pointerLockElement === renderer.domElement) {
     if (player.grab?.type === "bar") prompt.textContent = "Swing with W and S, then release left mouse to launch.";
-    else if (player.grab?.type === "hold") prompt.textContent = "Keep left mouse held and tap WASD to move between holds.";
+    else if (getActiveHolds().length > 0) prompt.textContent = "Hold either mouse button on rocks. Use both hands to brace on two holds.";
     else if (player.grinding) prompt.textContent = "Rail locked. Space jumps you off early.";
     else if (player.wallSliding) prompt.textContent = "Wall slide active. Face the wall, then hit Space for the kick.";
     else prompt.textContent = "Move with WASD, jump with Space, and Shift for slide or air dash.";
@@ -791,13 +803,15 @@ function respawn() {
   player.airDashReady = false;
   player.airDashActiveUntil = 0;
   player.grab = null;
+  player.holds.left = null;
+  player.holds.right = null;
   player.grinding = null;
   player.railCooldownUntil = 0;
   clearInputs();
 }
 
 function resetPlayer() {
-  player.position.set(0, 0, 26);
+  player.position.set(0, SPAWN_DROP_HEIGHT, 26);
   player.velocity.set(0, 0, 0);
   player.yaw = Math.PI;
   player.pitch = 0;
@@ -806,6 +820,8 @@ function resetPlayer() {
   player.runKey = null;
   player.runLatchUntil = 0;
   player.grab = null;
+  player.holds.left = null;
+  player.holds.right = null;
   player.grinding = null;
   player.railCooldownUntil = 0;
   runStarted = true;
@@ -842,24 +858,65 @@ function getBarAnchorPosition(bar, angle = 0) {
 
 function getBarGrabSwingVelocity(bar, origin) {
   const distance = origin.distanceTo(bar.center);
-  const distanceFactor = clamp(1 - Math.abs(distance - BAR_GRAB_IDEAL_DISTANCE) / BAR_GRAB_DISTANCE_WINDOW, 0.18, 1);
-  const speedFactor = clamp(Math.abs(player.velocity.z) / RUN_SPEED, 0.18, 1.4);
-  const verticalBonus = clamp(-player.velocity.y * 0.035, -0.35, 0.35);
-  return THREE.MathUtils.clamp((-player.velocity.z * BAR_SWING_SCALE + verticalBonus) * distanceFactor * speedFactor, -3.2, 3.2);
+  const distanceFactor = clamp(1 - Math.abs(distance - BAR_GRAB_IDEAL_DISTANCE) / BAR_GRAB_DISTANCE_WINDOW, 0.42, 1.08);
+  const speedFactor = clamp(Math.abs(player.velocity.z) / RUN_SPEED, 0.45, 1.45);
+  const verticalBonus = clamp(-player.velocity.y * 0.045, -0.3, 0.42);
+  return THREE.MathUtils.clamp((-player.velocity.z * BAR_SWING_SCALE + verticalBonus) * distanceFactor * speedFactor, -3.8, 3.8);
+}
+
+function isGrabbing() {
+  return Boolean(player.grab || player.holds.left || player.holds.right);
+}
+
+function getActiveHolds() {
+  return [player.holds.left, player.holds.right].filter(Boolean);
+}
+
+function releaseAllGrabs(fromMouseUp) {
+  if (player.grab) {
+    releaseGrab(player.grab.hand, fromMouseUp);
+  }
+  player.holds.left = null;
+  player.holds.right = null;
+}
+
+function getHoldPairBodyAnchor(holds) {
+  if (holds.length === 0) return player.position.clone();
+  const average = holds.reduce((sum, grip) => sum.add(getHoldAnchorPosition(grip.target)), new THREE.Vector3()).multiplyScalar(1 / holds.length);
+  return average.add(new THREE.Vector3(0, holds.length > 1 ? -1.32 : -1.18, 0));
+}
+
+function findNextHold(hold, desired) {
+  let nextHold = null;
+  let bestScore = 0.3;
+  for (const candidate of world.grabbables) {
+    if (candidate.type !== "hold" || candidate.clusterId !== hold.clusterId || candidate === hold) continue;
+    const offset = candidate.point.clone().sub(hold.point);
+    if (offset.length() > 2.6) continue;
+    const direction = new THREE.Vector2(offset.x, offset.y);
+    if (direction.lengthSq() < 0.01) continue;
+    const score = direction.normalize().dot(desired) - offset.length() * 0.08;
+    if (score > bestScore) {
+      nextHold = candidate;
+      bestScore = score;
+    }
+  }
+  return nextHold;
 }
 
 function updateHandVisual(element, hand) {
   if (!element) return;
-  const engaged = player.grab?.hand === hand;
+  const grip = player.grab?.hand === hand ? player.grab : player.holds[hand];
+  const engaged = Boolean(grip);
   element.classList.toggle("is-engaged", engaged);
   if (!engaged) {
     element.style.setProperty("--hand-x", "0px");
     element.style.setProperty("--hand-y", "0px");
     return;
   }
-  const targetPoint = player.grab.type === "bar"
-    ? player.grab.target.center.clone().add(new THREE.Vector3(hand === "left" ? -0.45 : 0.45, 0, 0))
-    : player.grab.target.point.clone();
+  const targetPoint = grip.type === "bar"
+    ? grip.target.center.clone().add(new THREE.Vector3(hand === "left" ? -0.45 : 0.45, 0, 0))
+    : grip.target.point.clone();
   const projected = targetPoint.project(camera);
   const targetScreenX = (projected.x * 0.5 + 0.5) * viewport.clientWidth;
   const targetScreenY = (-projected.y * 0.5 + 0.5) * viewport.clientHeight;
