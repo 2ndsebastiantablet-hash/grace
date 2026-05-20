@@ -20,8 +20,19 @@ const extractCompressedSource = (wrapper) => {
   return Function('"use strict"; return (' + match[1] + ');')();
 };
 
+const repairKnownBundleCorruption = (compressed) => {
+  // The old restored bundle on GitHub is missing three base64 characters from
+  // an earlier publish. Repair those exact gaps before decoding so startup is
+  // deterministic instead of depending on the broken archived file.
+  if (compressed.length !== 34117) return compressed;
+  return compressed
+    .replace("GwJJI+38c0nTDDcNdGkJMonONJ", "GwJJI+38c0nTDDcNdGkJqoMonONJ")
+    .replace("D3CCNWyrDxbhBVUlHBY7ENDOnqZ", "D3CCNWyrDxbhBVUlHBY7bENDOnqZ");
+};
+
 const decompressSource = async (compressed) => {
-  const bytes = Uint8Array.from(atob(compressed), (char) => char.charCodeAt(0));
+  const repaired = repairKnownBundleCorruption(compressed);
+  const bytes = Uint8Array.from(atob(repaired), (char) => char.charCodeAt(0));
   if (typeof DecompressionStream !== "function") {
     throw new Error("This browser does not support DecompressionStream, which Grace needs to unpack the old test arena.");
   }
