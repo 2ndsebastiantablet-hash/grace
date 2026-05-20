@@ -14,6 +14,10 @@ const showStartupError = (error) => {
   if (prompt) prompt.textContent = "Grace hit a startup error instead of black-screening.";
 };
 
+replacements.updateHeldItems.next = "updateAmmoPickups";
+replacements.updateHeldItems.code += "\n\n" + replacements.animateHeldWeaponModel.code;
+delete replacements.animateHeldWeaponModel;
+
 const extractCompressedSource = (wrapper) => {
   const match = wrapper.match(/const\s+compressed\s*=\s*([\s\S]*?);\s*\n/);
   if (!match) throw new Error("Could not find the old game source bundle.");
