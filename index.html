@@ -43,8 +43,11 @@
       <button id="regen-button" type="button">Regenerate</button>
     </div>
   </aside>
-  <script type="module">
-    import(`./practice.js?v=${Date.now()}`);
+  <script>
+    const gameScript = document.createElement("script");
+    gameScript.type = "module";
+    gameScript.src = "./practice.js?v=" + Date.now();
+    document.body.appendChild(gameScript);
   </script>
 </body>
 </html>
